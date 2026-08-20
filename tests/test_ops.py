@@ -4,6 +4,7 @@ import pytest
 import torch
 
 import bitsandbytes
+from bitsandbytes.backends.cuda import ops as cuda_ops
 from tests.helpers import TRUE_FALSE, describe_dtype, get_available_devices, id_formatter, is_supported_on_hpu
 
 opcheck = torch.library.opcheck
@@ -373,6 +374,46 @@ class Test4bitBlockwiseQuantOps:
             absmax_offset=offset_non_f32,
         )
         torch.testing.assert_close(out, ref)
+
+
+class TestGemm4bitDispatch:
+    @pytest.mark.parametrize(
+        "M,N,K,expected",
+        [
+            (5, 6144, 6144, False),
+            (5, 7168, 7168, True),
+            (32, 7168, 7168, True),
+            (33, 7168, 7168, False),
+            (32, 8192, 11008, True),
+            (33, 8192, 11008, False),
+        ],
+    )
+    def test_sm103_thresholds(self, monkeypatch, M, N, K, expected):
+        monkeypatch.setattr(cuda_ops, "_gpu_dispatch_props", lambda _: (148, 10, 3))
+        cuda_ops._gemm_4bit_use_custom_cuda.cache_clear()
+        try:
+            assert cuda_ops._gemm_4bit_use_custom_cuda(0, torch.float16, M, N, K) is expected
+        finally:
+            cuda_ops._gemm_4bit_use_custom_cuda.cache_clear()
+
+    @pytest.mark.parametrize(
+        "M,N,K,expected",
+        [
+            (32, 7168, 7168, False),
+            (8, 11008, 4096, True),
+            (9, 11008, 4096, False),
+            (8, 11008, 11008, False),
+            (32, 65536, 4096, True),
+            (33, 65536, 4096, False),
+        ],
+    )
+    def test_sm100_thresholds_unchanged(self, monkeypatch, M, N, K, expected):
+        monkeypatch.setattr(cuda_ops, "_gpu_dispatch_props", lambda _: (148, 10, 0))
+        cuda_ops._gemm_4bit_use_custom_cuda.cache_clear()
+        try:
+            assert cuda_ops._gemm_4bit_use_custom_cuda(0, torch.float16, M, N, K) is expected
+        finally:
+            cuda_ops._gemm_4bit_use_custom_cuda.cache_clear()
 
 
 class TestNonContiguousInputs:
