@@ -263,7 +263,7 @@ def benchmark_cell(args, case_name, n, k, m, dtype, positional, keyword, num_sms
         "k": k,
         "m": m,
         "dtype": str(dtype).removeprefix("torch."),
-        "baseline_dispatch_custom": _gemm_4bit_use_custom_cuda(
+        "dispatch_custom": _gemm_4bit_use_custom_cuda(
             0,
             dtype,
             m,

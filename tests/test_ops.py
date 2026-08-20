@@ -4,8 +4,12 @@ import pytest
 import torch
 
 import bitsandbytes
-from bitsandbytes.backends.cuda import ops as cuda_ops
 from tests.helpers import TRUE_FALSE, describe_dtype, get_available_devices, id_formatter, is_supported_on_hpu
+
+if torch.cuda.is_available():
+    from bitsandbytes.backends.cuda import ops as cuda_ops
+else:
+    cuda_ops = None
 
 opcheck = torch.library.opcheck
 
@@ -376,11 +380,14 @@ class Test4bitBlockwiseQuantOps:
         torch.testing.assert_close(out, ref)
 
 
+@pytest.mark.skipif(cuda_ops is None, reason="CUDA backend is required")
 class TestGemm4bitDispatch:
     @pytest.mark.parametrize(
         "M,N,K,expected",
         [
             (5, 6144, 6144, False),
+            (5, 7104, 7168, False),
+            (5, 7105, 7168, True),
             (5, 7168, 7168, True),
             (32, 7168, 7168, True),
             (33, 7168, 7168, False),
