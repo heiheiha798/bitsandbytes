@@ -590,7 +590,8 @@ def _gemm_4bit_use_custom_cuda(device_index, dtype, M, N, K):
       sm86 (A10, ~600 GB/s GDDR6):   dedicated block; wider M caps than sm89 at medium N.
       sm89 (4090, L40S, GDDR6X):     default fallback; tall-K and large-N get higher M caps.
       sm90 (H100/H200, HBM3/HBM3e):  dequant+linear is much faster; thresholds are tight.
-      sm100 (B200/B300, HBM3e):       exits early at top of function.
+      sm100 (B200, HBM3e):            exits early at top of function.
+      sm103 (B300, HBM3e):            dedicated near-wave occupancy threshold.
       sm120 (RTX 5000, GDDR7):        dedicated block; medium-N tiers differ from sm89.
       sm121 (GB10 DGX Spark, LPDDR5X):  dedicated block at >=1 wave only; the low
                                      memory bandwidth keeps the custom kernel ahead
@@ -614,8 +615,12 @@ def _gemm_4bit_use_custom_cuda(device_index, dtype, M, N, K):
     if (major == 8 and minor == 7) or major == 11:
         return False
 
-    # sm100 (B200/B300): dequant+F.linear is significantly faster than our mma.sync kernel.
+    # sm103 (B300): the custom kernel wins through M=32 above 3/4 wave; M=33
+    # switches to a larger tile and loses to dequant+F.linear.
     if major == 10:
+        if minor == 3 and n_blocks * 4 > num_sms * 3:
+            return M <= 32
+        # sm100 (B200): dequant+F.linear is significantly faster than our mma.sync kernel.
         if n_blocks >= num_sms * 3:
             return M <= 32
         if n_blocks >= num_sms:
