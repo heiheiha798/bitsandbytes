@@ -603,14 +603,16 @@ class TestQuantize4BitFunctional:
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32], ids=describe_dtype)
     @pytest.mark.parametrize("quant_type", ["fp4", "nf4"])
     @pytest.mark.parametrize("blocksize", [32, 64, 4096], ids=id_formatter("blocksize"))
-    def test_nested_dequantize_sm103_matches_legacy(self, device, dtype, quant_type, blocksize, monkeypatch):
+    def test_nested_dequantize_forced_native_matches_legacy(self, device, dtype, quant_type, blocksize, monkeypatch):
+        """Force the native candidate predicate only for CUDA CI equality coverage."""
         if device != "cuda":
-            pytest.skip("The nested CUDA specialization is only available on SM103")
+            pytest.skip("The forced native candidate requires CUDA")
 
         from bitsandbytes.backends.cuda import ops as cuda_ops
 
-        if not cuda_ops._dequantize_4bit_nested_supported(torch.cuda.current_device()):
-            pytest.skip("The nested CUDA specialization is only selected on SM103")
+        # Production still selects this path only on exact SM103; forcing the
+        # predicate here executes the generic native candidate on CUDA CI.
+        monkeypatch.setattr(cuda_ops, "_dequantize_4bit_nested_supported", lambda _device_index: True)
 
         calls = 0
         nested_impl = cuda_ops._dequantize_4bit_nested_impl
